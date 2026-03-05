@@ -2,11 +2,18 @@
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+import gdown
 
-# --- Step 1: Load CSV without headers ---
-file_path = r"C:\Users\admin\Documents\DongXu Projects\Worker_Condition_2026-Jan-March_(DirectExport).csv"
+# --- Step 1: Download CSV from Google Drive ---
+# Replace FILE_ID with your own Google Drive file ID
+file_id = "1gwIQqFY9G6_gWx75n47mnD7jZnKwFTKu"
+csv_path = "worker_condition.csv"
+
+gdown.download(f"https://drive.google.com/uc?id={file_id}", csv_path, quiet=False)
+
+# --- Step 2: Load CSV ---
 temp_cols = ["Number", "Station", "Duplicate", "Distance", "Status_ID", "DateTime"]
-df = pd.read_csv(file_path, header=None, names=temp_cols)
+df = pd.read_csv(csv_path, header=None, names=temp_cols)
 
 # Drop unnecessary columns
 df = df.drop(columns=["Number", "Duplicate"])
@@ -18,13 +25,12 @@ df["DateTime"] = pd.to_datetime(df["DateTime"], errors="coerce")
 
 st.title("Workstation Condition Dashboard")
 
-# --- Step 2: Sidebar filters ---
+# --- Step 3: Sidebar Filters ---
 st.sidebar.header("Filters")
 stations = df["Station"].unique()
 selected_station = st.sidebar.selectbox("Select Station", stations, key="station_select")
 
 filtered_df = df[df["Station"] == selected_station].copy()
-
 min_date = filtered_df["DateTime"].dt.date.min()
 max_date = filtered_df["DateTime"].dt.date.max()
 
@@ -39,7 +45,7 @@ selected_date = st.sidebar.date_input(
 filtered_df = filtered_df[filtered_df["DateTime"].dt.date == selected_date]
 filtered_df = filtered_df.sort_values("DateTime").reset_index(drop=True)
 
-# --- Step 3: Debounce Logic ---
+# --- Step 4: Debounce Logic ---
 if not filtered_df.empty:
     raw_status = (filtered_df["Distance"] < 50).astype(int)
     debounced_status = []
@@ -65,7 +71,7 @@ if not filtered_df.empty:
 
     filtered_df.insert(2, "Status", debounced_status)
 
-    # --- Step 4: Detect Sensor Outage (Status = 2 if gap > 30s) ---
+    # --- Step 5: Detect Sensor Outage (Status = 2 if gap > 30s) ---
     filtered_df["TimeDiff"] = filtered_df["DateTime"].diff().dt.total_seconds()
     fault_active = False
     for i in range(len(filtered_df)):
@@ -77,7 +83,7 @@ if not filtered_df.empty:
         if fault_active and i > 0 and filtered_df["TimeDiff"].iloc[i] <= 30:
             fault_active = False
 
-# --- Step 5: Statistics (time-based) ---
+# --- Step 6: Statistics (time-based) ---
 st.sidebar.header("Statistics")
 if not filtered_df.empty and len(filtered_df) > 1:
     filtered_df["TimeDiff"] = filtered_df["DateTime"].diff().dt.total_seconds().fillna(0)
@@ -102,7 +108,7 @@ if not filtered_df.empty and len(filtered_df) > 1:
 else:
     st.sidebar.markdown("No data available for selected filters.")
 
-# --- Step 6: Step Chart (Original Style + Colored Legend Font) ---
+# --- Step 7: Step Chart ---
 if not filtered_df.empty:
     color_map = {0: "red", 1: "green", 2: "blue"}
     fig = go.Figure()
@@ -125,7 +131,7 @@ if not filtered_df.empty:
         )
     )
 
-    # Dummy traces for legend with colored font
+    # Dummy traces for legend with font color
     fig.add_trace(go.Scatter(x=[None], y=[None], mode="lines",
                              line=dict(color="green", width=3),
                              name="<span style='color:green'>1 = Active</span>"))
@@ -168,7 +174,7 @@ if not filtered_df.empty:
 else:
     st.info("No data available for the selected filters.")
 
-# --- Step 7: Summary Table ---
+# --- Step 8: Summary Table ---
 st.subheader("Summary Table: All Workstations")
 summary_df = df[df["DateTime"].dt.date == selected_date].groupby("Station").apply(
     lambda x: (x["Distance"] < 50).sum() / len(x) * 100 if len(x) > 0 else 0
@@ -176,6 +182,6 @@ summary_df = df[df["DateTime"].dt.date == selected_date].groupby("Station").appl
 summary_df.columns = ["Station", "Percentage Active (%)"]
 st.dataframe(summary_df)
 
-# --- Step 8: Data Table ---
+# --- Step 9: Data Table ---
 st.subheader("Data Table")
 st.dataframe(filtered_df)
